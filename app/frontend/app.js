@@ -1,3 +1,28 @@
+// --- Theme Toggle Logic ---
+const themeToggleBtn = document.getElementById('theme-toggle');
+
+// Determine system and storage preferences
+const savedTheme = localStorage.getItem('theme');
+const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+
+// Apply the initial theme immediately on load
+setTheme(initialTheme);
+
+// Toggle theme on user click
+themeToggleBtn.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+});
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    themeToggleBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+// --- AI Course Creator Logic ---
 const createForm = document.getElementById('create-form');
 const topicInput = document.getElementById('topic-input');
 const createButton = document.getElementById('create-button');
