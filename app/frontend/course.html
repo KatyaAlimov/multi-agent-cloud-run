@@ -7,6 +7,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <!-- Inline anti-flash theme initializer -->
+    <script>
+        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+    
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="course-page">
@@ -14,6 +21,8 @@
         <header class="course-header">
             <a href="/" class="back-link">← Create Another Course</a>
             <div class="logo">🎓 AI Course Creator</div>
+            <!-- Embedded theme toggle control action element -->
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">🌙</button>
         </header>
         <div class="course-layout">
             <aside class="course-sidebar">
@@ -34,6 +43,23 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Theme Sync Script Segment ---
+            const themeToggleBtn = document.getElementById('theme-toggle');
+            const currentActiveTheme = document.documentElement.getAttribute('data-theme');
+            
+            // Set initial state matching string literal icon indicator
+            themeToggleBtn.textContent = currentActiveTheme === 'dark' ? '☀️' : '🌙';
+
+            themeToggleBtn.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                document.documentElement.setAttribute('data-theme', nextTheme);
+                localStorage.setItem('theme', nextTheme);
+                themeToggleBtn.textContent = nextTheme === 'dark' ? '☀️' : '🌙';
+            });
+
+            // --- Course Rendering Pipeline ---
             const courseData = localStorage.getItem('currentCourse');
             if (!courseData) {
                 window.location.href = '/';
