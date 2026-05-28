@@ -71,116 +71,6 @@
             
             // Render Markdown
             contentContainer.innerHTML = marked.parse(courseData);
-            const courseTitle = contentContainer.querySelector('h1')?.textContent || 'Generated Course';
-
-            function getSectionText(heading) {
-                const chunks = [heading.textContent.trim()];
-                let node = heading.nextElementSibling;
-
-                while (node && node.tagName !== 'H2') {
-                    if (!node.classList.contains('section-video-panel')) {
-                        const text = node.innerText?.trim();
-                        if (text) {
-                            chunks.push(text);
-                        }
-                    }
-                    node = node.nextElementSibling;
-                }
-
-                return chunks.join('\n\n');
-            }
-
-            function showVideoResult(resultContainer, data) {
-                resultContainer.innerHTML = '';
-
-                const videoSource = data.video_data_url || data.video_uri;
-                if (!videoSource) {
-                    resultContainer.textContent = 'The video was created, but no playable video source was returned.';
-                    return;
-                }
-
-                if (videoSource.startsWith('gs://')) {
-                    const message = document.createElement('p');
-                    message.className = 'video-generation-note';
-                    message.textContent = `Video created at ${videoSource}. Open this Cloud Storage URI from your Google Cloud project.`;
-                    resultContainer.appendChild(message);
-                    return;
-                }
-
-                const video = document.createElement('video');
-                video.className = 'section-video-player';
-                video.controls = true;
-                video.src = videoSource;
-                resultContainer.appendChild(video);
-            }
-
-            async function createSectionVideo(heading, button, status, resultContainer) {
-                button.disabled = true;
-                button.textContent = 'Creating video...';
-                status.textContent = 'Generating a section video. This can take a few minutes.';
-                resultContainer.innerHTML = '';
-
-                try {
-                    const response = await fetch('/api/generate_video', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            course_title: courseTitle,
-                            section_title: heading.textContent.trim(),
-                            section_text: getSectionText(heading)
-                        })
-                    });
-
-                    if (!response.ok) {
-                        let detail = `HTTP error! status: ${response.status}`;
-                        try {
-                            const errorBody = await response.json();
-                            detail = errorBody.detail || detail;
-                        } catch (_) {
-                            // Keep the HTTP status fallback if the body is not JSON.
-                        }
-                        throw new Error(detail);
-                    }
-
-                    const data = await response.json();
-                    showVideoResult(resultContainer, data);
-                    status.textContent = 'Video ready.';
-                    button.textContent = 'Create another video';
-                } catch (error) {
-                    console.error('Video generation failed:', error);
-                    status.textContent = `Video generation failed: ${error.message}`;
-                    button.textContent = 'Try video again';
-                } finally {
-                    button.disabled = false;
-                }
-            }
-
-            function addVideoControl(heading) {
-                const panel = document.createElement('div');
-                panel.className = 'section-video-panel';
-
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'section-video-button';
-                button.textContent = 'Create video for this section';
-
-                const status = document.createElement('div');
-                status.className = 'section-video-status';
-
-                const resultContainer = document.createElement('div');
-                resultContainer.className = 'section-video-result';
-
-                button.addEventListener('click', () => {
-                    createSectionVideo(heading, button, status, resultContainer);
-                });
-
-                panel.appendChild(button);
-                panel.appendChild(status);
-                panel.appendChild(resultContainer);
-                heading.insertAdjacentElement('afterend', panel);
-            }
             
             // Generate TOC from h2 elements
             const headings = contentContainer.querySelectorAll('h2');
@@ -206,7 +96,6 @@
 
                     li.appendChild(a);
                     tocList.appendChild(li);
-                    addVideoControl(heading);
                 });
             }
         });

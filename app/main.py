@@ -1,19 +1,15 @@
 import logging
 import os
 import json
-import asyncio
-import base64
-import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from httpx_sse import aconnect_sse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from google import genai
 from google.genai import types as genai_types
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
@@ -151,12 +147,6 @@ class SimpleChatRequest(BaseModel):
     user_id: str = "test_user"
     session_id: Optional[str] = None
 
-class VideoGenerationRequest(BaseModel):
-    course_title: str | None = None
-    section_title: str
-    section_text: str
-    duration_seconds: int = 8
-
 @app.post("/api/chat_stream")
 async def chat_stream(request: SimpleChatRequest):
     """Streaming chat endpoint."""
@@ -207,137 +197,6 @@ async def chat_stream(request: SimpleChatRequest):
         yield json.dumps({"type": "result", "text": final_text.strip()}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
-
-def create_video_client():
-    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true"
-    if not use_vertex:
-        return genai.Client()
-
-    project = os.getenv("GOOGLE_CLOUD_PROJECT")
-    if not project:
-        raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set")
-
-    location = os.getenv("VIDEO_GOOGLE_CLOUD_LOCATION")
-    if not location:
-        location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-        if location == "global":
-            location = "us-central1"
-
-    return genai.Client(
-        vertexai=True,
-        project=project,
-        location=location,
-    )
-
-def build_video_prompt(request: VideoGenerationRequest) -> str:
-    course_title = request.course_title or "Untitled course"
-    section_text = request.section_text.strip()[:5000]
-
-    return f"""
-Create a high-quality educational explainer video for one section of an online course.
-
-Course title: {course_title}
-Section title: {request.section_title}
-Section content:
-{section_text}
-
-Requirements:
-- Focus only on this section, not the entire course.
-- Use clear instructional visuals, smooth pacing, and a polished professional style.
-- Show concepts with diagrams, examples, animations, and realistic educational scenes where useful.
-- Keep text overlays short and readable.
-- Make the video useful as a standalone learning aid for this module.
-"""
-
-def refresh_video_operation(client, operation):
-    try:
-        return client.operations.get(operation)
-    except TypeError:
-        operation_name = getattr(operation, "name", operation)
-        return client.operations.get(operation_name)
-
-def generate_section_video(request: VideoGenerationRequest) -> Dict[str, str]:
-    prompt = build_video_prompt(request)
-    duration_seconds = min(max(request.duration_seconds, 4), 8)
-    model = os.getenv("VIDEO_MODEL", "veo-3.1-generate-preview")
-    poll_interval = int(os.getenv("VIDEO_POLL_INTERVAL_SECONDS", "10"))
-    max_wait = int(os.getenv("VIDEO_MAX_WAIT_SECONDS", "300"))
-
-    client = create_video_client()
-    operation = client.models.generate_videos(
-        model=model,
-        prompt=prompt,
-        config=genai_types.GenerateVideosConfig(
-            number_of_videos=1,
-            duration_seconds=duration_seconds,
-            aspect_ratio="16:9",
-            enhance_prompt=True,
-        ),
-    )
-
-    deadline = time.monotonic() + max_wait
-    while not operation.done:
-        if time.monotonic() >= deadline:
-            raise TimeoutError("Video generation timed out. Please try again.")
-        time.sleep(poll_interval)
-        operation = refresh_video_operation(client, operation)
-
-    if operation.error:
-        raise RuntimeError(f"Video generation failed: {operation.error}")
-
-    response = getattr(operation, "response", None) or getattr(operation, "result", None)
-    if not response or not response.generated_videos:
-        raise RuntimeError("Video generation completed without a video.")
-
-    generated_video = response.generated_videos[0]
-    video = generated_video.video
-    video_uri = getattr(video, "uri", None)
-    mime_type = getattr(video, "mime_type", None) or "video/mp4"
-
-    try:
-        downloaded = client.files.download(file=video)
-        video_bytes = getattr(video, "video_bytes", None) or downloaded
-    except Exception as exc:
-        if video_uri:
-            logger.warning("Returning generated video URI because download failed: %s", exc)
-            return {
-                "video_uri": video_uri,
-                "mime_type": mime_type,
-                "prompt": prompt,
-            }
-        raise
-
-    if not video_bytes:
-        if video_uri:
-            return {
-                "video_uri": video_uri,
-                "mime_type": mime_type,
-                "prompt": prompt,
-            }
-        raise RuntimeError("Generated video did not include downloadable bytes.")
-
-    encoded_video = base64.b64encode(video_bytes).decode("ascii")
-    return {
-        "video_data_url": f"data:{mime_type};base64,{encoded_video}",
-        "mime_type": mime_type,
-        "prompt": prompt,
-    }
-
-@app.post("/api/generate_video")
-async def generate_video(request: VideoGenerationRequest):
-    """Generate a short video for a single course section."""
-    if not request.section_title.strip():
-        raise HTTPException(status_code=400, detail="section_title is required")
-    if not request.section_text.strip():
-        raise HTTPException(status_code=400, detail="section_text is required")
-
-    try:
-        return await asyncio.to_thread(generate_section_video, request)
-    except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Video generation failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 # Mount frontend from the copied location
 frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
