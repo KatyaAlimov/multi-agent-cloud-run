@@ -21,9 +21,9 @@
         <header class="course-header">
             <a href="/" class="back-link">← Create Another Course</a>
             <div class="logo">🎓 AI Course Creator</div>
-            <!-- Embedded theme toggle control action element -->
             <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">🌙</button>
         </header>
+
         <div class="course-layout">
             <aside class="course-sidebar">
                 <div class="toc-title">Contents</div>
@@ -33,6 +33,7 @@
                     </ul>
                 </nav>
             </aside>
+
             <main class="course-main">
                 <article id="course-content" class="course-content">
                     <div class="loading-course">Loading your course...</div>
@@ -40,14 +41,14 @@
             </main>
         </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('load', () => {
             // --- Theme Sync Script Segment ---
             const themeToggleBtn = document.getElementById('theme-toggle');
             const currentActiveTheme = document.documentElement.getAttribute('data-theme');
             
-            // Set initial state matching string literal icon indicator
             themeToggleBtn.textContent = currentActiveTheme === 'dark' ? '☀️' : '🌙';
 
             themeToggleBtn.addEventListener('click', () => {
@@ -68,12 +69,127 @@
             
             const contentContainer = document.getElementById('course-content');
             const tocList = document.getElementById('toc-list');
-            
+
             // Render Markdown
-            contentContainer.innerHTML = marked.parse(courseData);
+            if (typeof marked === 'undefined') {
+                contentContainer.textContent = courseData;
+            } else {
+                contentContainer.innerHTML = marked.parse(courseData);
+            }
+
+            function getSectionText(heading) {
+                const chunks = [heading.textContent.trim()];
+                let node = heading.nextElementSibling;
+
+                while (node && node.tagName !== 'H2' && node.tagName !== 'H3') {
+                    const text = node.innerText?.trim();
+                    if (text) {
+                        chunks.push(text);
+                    }
+                    node = node.nextElementSibling;
+                }
+
+                return chunks.join('\n\n');
+            }
+
+            function addVideoControls(heading) {
+                const videoPanel = document.createElement('div');
+                videoPanel.className = 'section-video-panel';
+
+                const videoButton = document.createElement('button');
+                videoButton.type = 'button';
+                videoButton.className = 'section-video-button';
+                videoButton.textContent = 'Create video lesson for this section';
+
+                const videoStatus = document.createElement('div');
+                videoStatus.className = 'section-video-status';
+
+                const videoResult = document.createElement('div');
+                videoResult.className = 'section-video-result';
+
+                videoPanel.appendChild(videoButton);
+                videoPanel.appendChild(videoStatus);
+                videoPanel.appendChild(videoResult);
+
+                heading.insertAdjacentElement('afterend', videoPanel);
+
+                videoButton.addEventListener('click', async () => {
+                    videoButton.disabled = true;
+                    videoButton.textContent = 'Creating lesson video...';
+                    videoStatus.textContent = 'Generating a 3-6 minute slide-based video lesson. This may take several minutes.';
+                    videoResult.innerHTML = '';
+
+                    try {
+                        const response = await fetch('/api/generate_lesson_video', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                course_title: contentContainer.querySelector('h1')?.textContent || 'Generated Course',
+                                section_title: heading.textContent.trim(),
+                                section_text: getSectionText(heading)
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(data.detail || 'Lesson video generation failed.');
+                        }
+
+                        const videoSource = data.video_url;
+
+                        if (!videoSource) {
+                            videoStatus.textContent = 'The lesson video was created, but no video URL was returned.';
+                            return;
+                        }
+
+                        videoStatus.textContent = `Lesson video ready. Target length: ${data.target_duration_minutes || '3-6'} minutes.`;
+
+                        const video = document.createElement('video');
+                        video.controls = true;
+                        video.className = 'section-video-player';
+                        video.src = videoSource;
+
+                        videoResult.innerHTML = '';
+                        videoResult.appendChild(video);
+
+                        if (data.script_markdown) {
+                            const details = document.createElement('details');
+                            details.className = 'lesson-script-details';
+
+                            const summary = document.createElement('summary');
+                            summary.textContent = 'View generated script and storyboard';
+
+                            const scriptContainer = document.createElement('div');
+                            scriptContainer.className = 'video-script-output';
+
+                            if (typeof marked === 'undefined') {
+                                scriptContainer.textContent = data.script_markdown;
+                            } else {
+                                scriptContainer.innerHTML = marked.parse(data.script_markdown);
+                            }
+
+                            details.appendChild(summary);
+                            details.appendChild(scriptContainer);
+                            videoResult.appendChild(details);
+                        }
+
+                        videoButton.textContent = 'Create another lesson video';
+                    } catch (error) {
+                        console.error('Lesson video generation failed:', error);
+                        videoStatus.textContent = error.message;
+                        videoButton.textContent = 'Try again';
+                    } finally {
+                        videoButton.disabled = false;
+                    }
+                });
+            }
             
-            // Generate TOC from h2 elements
-            const headings = contentContainer.querySelectorAll('h2');
+            // Generate TOC from h2/h3 elements
+            const headings = contentContainer.querySelectorAll('h2, h3');
+
             if (headings.length === 0) {
                 document.querySelector('.course-sidebar').style.display = 'none';
                 document.querySelector('.course-layout').style.justifyContent = 'center';
@@ -88,14 +204,15 @@
                     a.textContent = heading.textContent;
                     a.classList.add('toc-link');
                     
-                    // Simple active state on click
                     a.addEventListener('click', () => {
-                        document.querySelectorAll('.toc-link').forEach(l => l.classList.remove('active'));
+                        document.querySelectorAll('.toc-link').forEach(link => link.classList.remove('active'));
                         a.classList.add('active');
                     });
 
                     li.appendChild(a);
                     tocList.appendChild(li);
+
+                    addVideoControls(heading);
                 });
             }
         });
