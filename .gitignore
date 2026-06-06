@@ -208,3 +208,4 @@ __MACOSX/
 .DS_Store
 desktop.ini
 Thumbs.db
+app/generated_videos/
