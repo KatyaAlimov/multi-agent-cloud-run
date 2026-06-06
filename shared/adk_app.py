@@ -1,17 +1,3 @@
-# Copyright 2026 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import asyncio
 import os
 import logging
@@ -89,6 +75,13 @@ LOG_LEVELS = click.Choice(
     type=LOG_LEVELS,
     default="INFO",
     help="Optional. Set the logging level",
+)
+@click.option(
+    "--language",
+    type=str,
+    default="en",
+    help="Optional. Set the target language for the agent orchestration pipeline (e.g., en, es, fr).",
+    show_default=True,
 )
 @click.option(
     "--trace_to_cloud",
@@ -172,6 +165,7 @@ def main(
     eval_storage_uri: typing.Optional[str] = None,
     verbose: bool = False,
     log_level: str = "INFO",
+    language: str = "en",
     trace_to_cloud: bool = False,
     otel_to_cloud: bool = False,
     session_service_uri: typing.Optional[str] = None,
@@ -246,6 +240,7 @@ def main(
         url_prefix=url_prefix,
         reload_agents=reload_agents,
         extra_plugins=extra_plugins,
+        language=language,   
     )
     if a2a:
         from starlette.middleware.base import BaseHTTPMiddleware

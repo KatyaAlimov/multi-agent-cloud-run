@@ -74,7 +74,10 @@ class EscalationChecker(BaseAgent):
     ) -> AsyncGenerator[Event, None]:
         # Retrieve the feedback saved by the Judge
         feedback = ctx.session.state.get("judge_feedback")
-        print(f"[EscalationChecker] Feedback: {feedback}")
+        
+        # Pull the global language configuration from execution state context (default to English)
+        language = ctx.session.state.get("language", "en")
+        print(f"[EscalationChecker] Context Language: {language} | Feedback: {feedback}")
 
         # Check for 'pass' status
         is_pass = False
@@ -93,6 +96,25 @@ class EscalationChecker(BaseAgent):
 
 escalation_checker = EscalationChecker(name="escalation_checker")
 
+
+# --- Root Pipeline Definition ---
+
+class MultilingualCoursePipeline(SequentialAgent):
+    """Root pipeline that initializes and propagates the language context to all sub-agents."""
+    
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        # Pass the global language configuration into the active execution session state context
+        language = ctx.state.get("language", "en")
+        ctx.state["language"] = language
+        print(f"[{self.name}] Root pipeline initialized with language context: {language}")
+        
+        # Delegate execution downstream to the standard SequentialAgent workflow
+        async for event in super()._run_async_impl(ctx):
+            yield event
+
+
 # --- Orchestration ---
 
 research_loop = LoopAgent(
@@ -102,8 +124,9 @@ research_loop = LoopAgent(
     max_iterations=3,
 )
 
-root_agent = SequentialAgent(
+# Instantiate the custom multilingual pipeline wrapper to handle state tracking
+root_agent = MultilingualCoursePipeline(
     name="course_creation_pipeline",
-    description="A pipeline that researches a topic and then builds a course from it.",
+    description="A pipeline that researches a topic and then builds a course from it in the chosen language.",
     sub_agents=[research_loop, content_builder],
 )
